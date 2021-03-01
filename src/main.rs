@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::Result;
 use ethers::providers::{Http, Middleware, Provider};
 use ethers::types::{Address, U256};
 use std::convert::TryFrom;
@@ -19,7 +19,7 @@ struct CelophaneOpt {
 
 #[derive(StructOpt)]
 struct AccountBalanceOpt {
-    address: String,
+    address: Address,
 }
 
 #[derive(StructOpt)]
@@ -50,15 +50,10 @@ enum Command {
 }
 
 async fn account_balance<M: Middleware>(client: Arc<M>, args: AccountBalanceOpt) -> Result<()> {
-    let address = args
-        .address
-        .parse::<Address>()
-        .with_context(|| "failed to parse account address")?;
-
     let celo = celo::get_celo_token(client.clone()).await.unwrap();
     let cusd = celo::get_cusd_token(client.clone()).await.unwrap();
-    let celo_balance = celo.balance_of(address).call().await.unwrap();
-    let cusd_balance = cusd.balance_of(address).call().await.unwrap();
+    let celo_balance = celo.balance_of(args.address).call().await.unwrap();
+    let cusd_balance = cusd.balance_of(args.address).call().await.unwrap();
 
     println!("All balances expressed in units of 10^-18.");
     println!("CELO: {}", celo_balance);
