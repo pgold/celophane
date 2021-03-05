@@ -82,7 +82,7 @@ async fn account_balance<M: Middleware>(client: Arc<M>, args: AccountBalanceOpt)
 }
 
 async fn exchange_show<M: Middleware>(client: Arc<M>, args: ExchangeShowOpt) -> Result<()> {
-    let exchange = celo::get_exchange(client.clone()).await.unwrap();
+    let exchange = celo::get_exchange(client.clone()).await?;
 
     let base_qty = args.amount;
 

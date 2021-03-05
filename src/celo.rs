@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use ethers::prelude::abigen;
 use ethers::providers::Middleware;
 use ethers::types::Address;
@@ -34,7 +34,7 @@ pub async fn get_ceur_token<M: Middleware>(client: Arc<M>) -> Result<Erc20<M>> {
 }
 
 pub async fn get_exchange<M: Middleware>(client: Arc<M>) -> Result<Exchange<M>> {
-    let exchange_address = registry_lookup(client.clone(), EXCHANGE).await.unwrap();
+    let exchange_address = registry_lookup(client.clone(), EXCHANGE).await?;
     let exchange = Exchange::new(exchange_address, client.clone());
     Ok(exchange)
 }
@@ -42,10 +42,12 @@ pub async fn get_exchange<M: Middleware>(client: Arc<M>) -> Result<Exchange<M>> 
 pub async fn registry_lookup<M: Middleware>(client: Arc<M>, name: &str) -> Result<Address> {
     let registry_address: Address = REGISTRY_ADDRESS.parse()?;
     let registry = Registry::new(registry_address, client);
-    let address = registry
+    match registry
         .get_address_for_string(name.to_string())
         .call()
         .await
-        .unwrap();
-    Ok(address)
+    {
+        Ok(address) => Ok(address),
+        Err(_) => Err(anyhow!("registry lookup failed (name: {})", name)),
+    }
 }
