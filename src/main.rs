@@ -49,15 +49,35 @@ enum Command {
     Exchange(ExchangeCommand),
 }
 
+async fn print_balance<M: Middleware>(
+    maybe_token: Result<celo::Erc20<M>>,
+    address: Address,
+    label: &str,
+) -> Result<()> {
+    // One would expect a non-existent token to be an Error on maybe_token,
+    // but there is a token and the balance_of call fails instead.
+    match maybe_token {
+        Ok(token) => match token.balance_of(address).call().await {
+            Ok(balance) => println!("{}: {}", label, balance),
+            // Ignore unexistent token.
+            Err(_) => (),
+        },
+        // Ignore unexistent token.
+        Err(_) => (),
+    }
+    Ok(())
+}
+
 async fn account_balance<M: Middleware>(client: Arc<M>, args: AccountBalanceOpt) -> Result<()> {
-    let celo = celo::get_celo_token(client.clone()).await.unwrap();
-    let cusd = celo::get_cusd_token(client.clone()).await.unwrap();
-    let celo_balance = celo.balance_of(args.address).call().await.unwrap();
-    let cusd_balance = cusd.balance_of(args.address).call().await.unwrap();
+    let celo = celo::get_celo_token(client.clone()).await;
+    let cusd = celo::get_cusd_token(client.clone()).await;
+    let ceur = celo::get_ceur_token(client.clone()).await;
 
     println!("All balances expressed in units of 10^-18.");
-    println!("CELO: {}", celo_balance);
-    println!("cUSD: {}", cusd_balance);
+    print_balance(celo, args.address, "CELO").await?;
+    print_balance(cusd, args.address, "cUSD").await?;
+    print_balance(ceur, args.address, "cEUR").await?;
+
     Ok(())
 }
 

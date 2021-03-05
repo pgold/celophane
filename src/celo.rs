@@ -9,6 +9,7 @@ const REGISTRY_ADDRESS: &str = "000000000000000000000000000000000000ce10";
 const EXCHANGE: &str = "Exchange";
 const GOLD_TOKEN: &str = "GoldToken";
 const STABLE_TOKEN: &str = "StableToken";
+const STABLE_TOKEN_EUR: &str = "StableTokenEUR";
 
 abigen!(Erc20, "./src/abis/IERC20.json");
 abigen!(Registry, "./src/abis/Registry.json");
@@ -26,6 +27,10 @@ pub async fn get_celo_token<M: Middleware>(client: Arc<M>) -> Result<Erc20<M>> {
 
 pub async fn get_cusd_token<M: Middleware>(client: Arc<M>) -> Result<Erc20<M>> {
     get_erc20_token(client, STABLE_TOKEN).await
+}
+
+pub async fn get_ceur_token<M: Middleware>(client: Arc<M>) -> Result<Erc20<M>> {
+    get_erc20_token(client, STABLE_TOKEN_EUR).await
 }
 
 pub async fn get_exchange<M: Middleware>(client: Arc<M>) -> Result<Exchange<M>> {
