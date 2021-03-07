@@ -211,6 +211,7 @@ dependencies = [
  "structopt",
  "tokio",
  "tracing-futures",
+ "url",
 ]
 
 [[package]]

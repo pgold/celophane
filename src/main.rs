@@ -1,9 +1,10 @@
-use anyhow::Result;
-use ethers::providers::{Http, Middleware, Provider};
+use anyhow::{anyhow, Result};
+use ethers::providers::{Http, Middleware, Provider, Ws};
 use ethers::types::{Address, U256};
 use std::convert::TryFrom;
 use std::sync::Arc;
 use structopt::StructOpt;
+use url::Url;
 
 mod celo;
 
@@ -11,7 +12,7 @@ mod celo;
 struct CelophaneOpt {
     /// Endpoint to connect to.
     #[structopt(long, default_value = "http://localhost:8545")]
-    endpoint: String,
+    endpoint: Url,
 
     #[structopt(subcommand)]
     cmd: Command,
@@ -103,13 +104,8 @@ async fn exchange_show<M: Middleware>(client: Arc<M>, args: ExchangeShowOpt) -> 
     Ok(())
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    let args = CelophaneOpt::from_args();
-
-    let provider = Provider::<Http>::try_from(args.endpoint)?;
+async fn run_command<M: Middleware>(provider: M, args: CelophaneOpt) -> Result<()> {
     let client = Arc::new(provider);
-
     match args.cmd {
         Command::Account(opt) => match opt {
             AccountCommand::Balance(opt) => account_balance(client, opt).await?,
@@ -120,4 +116,31 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+enum EitherProvider {
+    Http(Provider<Http>),
+    Ws(Provider<Ws>),
+}
+
+async fn create_provider(url: &Url) -> Result<EitherProvider> {
+    let provider = match url.scheme() {
+        "https" | "http" => EitherProvider::Http(Provider::<Http>::try_from(url.as_str())?),
+        "wss" | "ws" => EitherProvider::Ws(Provider::<Ws>::connect(url.as_str()).await?),
+        scheme => Err(anyhow!("Unknown URL scheme \"{}\"", scheme))?,
+    };
+    Ok(provider)
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let args = CelophaneOpt::from_args();
+
+    let provider = create_provider(&args.endpoint).await?;
+    let result = match provider {
+        EitherProvider::Http(p) => run_command(p, args).await,
+        EitherProvider::Ws(p) => run_command(p, args).await,
+    };
+
+    result
 }
