@@ -2,8 +2,10 @@ use anyhow::{anyhow, Result};
 use ethers::providers::{Http, Middleware, Provider, Ws};
 use ethers::types::{Address, U256};
 use std::convert::TryFrom;
+use std::future::Future;
 use std::sync::Arc;
 use structopt::StructOpt;
+use tokio::join;
 use url::Url;
 
 mod celo;
@@ -50,34 +52,41 @@ enum Command {
     Exchange(ExchangeCommand),
 }
 
-async fn print_balance<M: Middleware>(
-    maybe_token: Result<celo::Erc20<M>>,
-    address: Address,
-    label: &str,
-) -> Result<()> {
+fn print_balance(maybe_balance: Option<U256>, label: &str) {
+    match maybe_balance {
+        Some(balance) => println!("{}: {}", label, balance),
+        None => (),
+    }
+}
+
+async fn get_balance<M: Middleware, Fut>(token_future: Fut, address: Address) -> Option<U256>
+where
+    Fut: Future<Output = Result<celo::Erc20<M>>>,
+{
     // One would expect a non-existent token to be an Error on maybe_token,
     // but there is a token and the balance_of call fails instead.
-    match maybe_token {
+    match token_future.await {
         Ok(token) => match token.balance_of(address).call().await {
-            Ok(balance) => println!("{}: {}", label, balance),
+            Ok(balance) => Some(balance),
             // Ignore unexistent token.
-            Err(_) => (),
+            Err(_) => None,
         },
         // Ignore unexistent token.
-        Err(_) => (),
+        Err(_) => None,
     }
-    Ok(())
 }
 
 async fn account_balance<M: Middleware>(client: Arc<M>, args: AccountBalanceOpt) -> Result<()> {
-    let celo = celo::get_celo_token(client.clone()).await;
-    let cusd = celo::get_cusd_token(client.clone()).await;
-    let ceur = celo::get_ceur_token(client.clone()).await;
+    let (celo_balance, cusd_balance, ceur_balance) = join!(
+        get_balance(celo::get_celo_token(client.clone()), args.address),
+        get_balance(celo::get_cusd_token(client.clone()), args.address),
+        get_balance(celo::get_ceur_token(client.clone()), args.address)
+    );
 
     println!("All balances expressed in units of 10^-18.");
-    print_balance(celo, args.address, "CELO").await?;
-    print_balance(cusd, args.address, "cUSD").await?;
-    print_balance(ceur, args.address, "cEUR").await?;
+    print_balance(celo_balance, "CELO");
+    print_balance(cusd_balance, "cUSD");
+    print_balance(ceur_balance, "cEUR");
 
     Ok(())
 }
@@ -87,19 +96,13 @@ async fn exchange_show<M: Middleware>(client: Arc<M>, args: ExchangeShowOpt) -> 
 
     let base_qty = args.amount;
 
-    let cusd_quote_qty = exchange
-        .get_buy_token_amount(base_qty, true)
-        .call()
-        .await
-        .unwrap();
-    let celo_quote_qty = exchange
-        .get_buy_token_amount(base_qty, false)
-        .call()
-        .await
-        .unwrap();
+    let cusd_call = exchange.get_buy_token_amount(base_qty, true);
+    let celo_call = exchange.get_buy_token_amount(base_qty, false);
 
-    println!("{} CELO => {} cUSD", base_qty, cusd_quote_qty);
-    println!("{} cUSD => {} CELO", base_qty, celo_quote_qty);
+    let (cusd_quote_qty, celo_quote_qty) = join!(cusd_call.call(), celo_call.call());
+
+    println!("{} CELO => {} cUSD", base_qty, cusd_quote_qty.unwrap());
+    println!("{} cUSD => {} CELO", base_qty, celo_quote_qty.unwrap());
 
     Ok(())
 }
